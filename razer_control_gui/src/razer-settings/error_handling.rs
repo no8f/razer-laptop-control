@@ -1,5 +1,5 @@
-use gtk::prelude::*;
-use gtk::{ApplicationWindow, DialogFlags, MessageDialog};
+use adw::prelude::*;
+use adw::{AlertDialog, ApplicationWindow};
 
 pub trait Crash {
     type Value;
@@ -14,7 +14,7 @@ impl<T> Crash for Option<T> {
     fn or_crash(self, msg: impl AsRef<str>) -> Self::Value {
         match self {
             Self::Some(v) => v,
-            Self::None => crash_with_msg(msg)
+            Self::None => crash_with_msg(msg),
         }
     }
 }
@@ -25,7 +25,7 @@ impl<T, E> Crash for Result<T, E> {
     fn or_crash(self, msg: impl AsRef<str>) -> Self::Value {
         match self {
             Self::Ok(v) => v,
-            Self::Err(_) => crash_with_msg(msg)
+            Self::Err(_) => crash_with_msg(msg),
         }
     }
 }
@@ -39,14 +39,11 @@ pub fn crash_with_msg(msg: impl AsRef<str>) -> ! {
 fn show_msg(msg: impl AsRef<str>) {
     let msg = format!("{}.\n\nThis is an alpha!", msg.as_ref());
 
-    let msg_box = MessageDialog::new::<ApplicationWindow>(
-        None, DialogFlags::MODAL,
-        gtk::MessageType::Error, gtk::ButtonsType::Ok,
-        &msg
-    );
+    let msg_box = AlertDialog::new(Some("Oops, The App ran into a problem!"), Some(&msg));
     msg_box.set_title("The application has crashed");
 
-    let _response = msg_box.run();
+    let app = ApplicationWindow::builder().build();
+    let _response = msg_box.present(Some(&app));
 }
 
 /// Installs a custom panic hook to display an error to the user
