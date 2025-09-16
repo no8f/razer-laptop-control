@@ -1,16 +1,15 @@
 use std::io::ErrorKind;
 
 use adw::{
-    AboutDialog, ActionRow, Application, ApplicationWindow, ButtonRow, ComboRow, HeaderBar,
+    ActionRow, Application, ApplicationWindow, ButtonRow, ComboRow, HeaderBar,
     PreferencesGroup, PreferencesPage, SwitchRow, ToolbarView, ViewStack, ViewSwitcher,
     WindowTitle,
 };
-use adw::{PreferencesRow, prelude::*};
+use adw::prelude::*;
 use gtk::{
-    Box, Button, ColorDialog, ColorDialogButton, Label, License, LinkButton, Scale,
-    SingleSelection, StringList,
+    Button, ColorDialog, ColorDialogButton, License, Scale, StringList,
 };
-use gtk::{glib, glib::clone, prelude::*};
+use gtk::{glib, glib::clone};
 
 // sudo apt install libgdk-pixbuf2.0-dev libcairo-dev libatk1.0-dev
 // sudo apt install libpango1.0-dev
@@ -23,7 +22,6 @@ mod widgets;
 
 use error_handling::*;
 use util::*;
-use widgets::*;
 
 #[path = "../lib.rs"]
 mod lib;
@@ -178,7 +176,7 @@ fn get_power(ac: bool) -> Option<(u8, u8, u8)> {
     }
 
     let response = send_data(comms::DaemonCommand::GetCPUBoost { ac })?;
-    use comms::DaemonResponse::*;
+    
     match response {
         GetCPUBoost { cpu } => {
             result.1 = cpu;
@@ -191,7 +189,7 @@ fn get_power(ac: bool) -> Option<(u8, u8, u8)> {
     }
 
     let response = send_data(comms::DaemonCommand::GetGPUBoost { ac })?;
-    use comms::DaemonResponse::*;
+    
     match response {
         GetGPUBoost { gpu } => {
             result.2 = gpu;
