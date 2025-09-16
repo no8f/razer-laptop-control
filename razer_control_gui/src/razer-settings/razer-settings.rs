@@ -1,11 +1,15 @@
 use std::io::ErrorKind;
 
-use adw::prelude::*;
 use adw::{
-    Application, ApplicationWindow, ComboRow, HeaderBar, ToolbarView, ViewStack, ViewSwitcher,
+    AboutDialog, ActionRow, Application, ApplicationWindow, ButtonRow, ComboRow, HeaderBar,
+    PreferencesGroup, PreferencesPage, SwitchRow, ToolbarView, ViewStack, ViewSwitcher,
     WindowTitle,
 };
-use gtk::{Box, Button, Label, LinkButton, Scale, StringList, Switch};
+use adw::{PreferencesRow, prelude::*};
+use gtk::{
+    Box, Button, ColorDialog, ColorDialogButton, Label, License, LinkButton, Scale,
+    SingleSelection, StringList,
+};
 use gtk::{glib, glib::clone, prelude::*};
 
 // sudo apt install libgdk-pixbuf2.0-dev libcairo-dev libatk1.0-dev
@@ -252,6 +256,26 @@ fn set_fan_speed(ac: bool, value: i32) -> Option<bool> {
     }
 }
 
+fn show_about(window: &ApplicationWindow, device: &lib::SupportedDevice) {
+    let name = &device.name;
+    let features = &device.features.join(",");
+
+    let about = adw::AboutDialog::builder()
+        .application_name("Razer Laptop Control")
+        .application_icon("com.no8f.razerLaptopControl")
+        .developer_name("Noah Felber")
+        .issue_url("https://github.com/no8f/razer-laptop-control/issues")
+        .website("https://github.com/no8f/razer-laptop-control")
+        .comments(format!("<span size='large' weight='bold' >Laptop Information</span>\n\n - Model: {name} \n - Features: {features}"))
+        .version("0.2.0")
+        .developers(vec!["Noah Felber", "Josu Goñi"])
+        .copyright("© 2025 Noah Felber, © 2024 Josu Goñi")
+        .license_type(License::Gpl30)
+        .build();
+
+    about.present(Some(window));
+}
+
 fn main() {
     setup_panic_hook();
     gtk::init().or_crash("Failed to initialize GTK.");
@@ -279,48 +303,66 @@ fn main() {
         let window = ApplicationWindow::builder()
             .application(app)
             .default_width(640)
-            .default_height(480)
+            .default_height(740)
             .title("Razer Settings")
             .build();
 
         let ac_settings_page = make_page(true, device.clone());
         let battery_settings_page = make_page(false, device.clone());
         let general_page = make_general_page();
-        let about_page = make_about_page(device.clone());
 
         let stack = ViewStack::new();
 
-        let ac: Option<&str> = Some("AC");
-        let bat: Option<&str> = Some("Battery");
-        let general: Option<&str> = Some("General");
-        let ab: Option<&str> = Some("About");
-
-        stack.add_titled(&ac_settings_page.master_container, ac, "AC");
-        stack.add_titled(&battery_settings_page.master_container, bat, "Battery");
-        stack.add_titled(&general_page.master_container, general, "General");
-        stack.add_titled(&about_page.master_container, ab, "About");
+        stack.add_titled_with_icon(&ac_settings_page, Some("AC"), "AC", "ac-adapter-symbolic");
+        stack.add_titled_with_icon(
+            &battery_settings_page,
+            Some("Battery"),
+            "Battery",
+            "battery",
+        );
+        stack.add_titled_with_icon(
+            &general_page,
+            Some("General"),
+            "General",
+            "preferences-system-symbolic",
+        );
+        stack.set_property("enable-transitions", true);
 
         let stack_switcher = ViewSwitcher::builder().build();
 
         stack_switcher.set_stack(Some(&stack));
         stack_switcher.set_halign(gtk::Align::Center);
+        stack_switcher.set_policy(adw::ViewSwitcherPolicy::Wide);
 
         let vbox = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        vbox.append(&stack_switcher);
         vbox.append(&stack);
 
         let header_bar = HeaderBar::new();
-        header_bar.set_title_widget(Some(&stack_switcher));
+
+        header_bar.set_title_widget(Some(&WindowTitle::new("Razer Laptop Control", "")));
 
         // Add a button to the header
-        let header_button = Button::with_label("Action");
-        header_bar.pack_end(&header_button);
+        let header_button = Button::from_icon_name("help-about");
+        header_bar.pack_start(&header_button);
+
+        header_button.connect_clicked(clone!(
+            #[strong]
+            window,
+            #[strong]
+            device,
+            move |button| {
+                show_about(&window, &device);
+            }
+        ));
 
         let toolbar = ToolbarView::new();
         toolbar.add_top_bar(&header_bar);
-        toolbar.set_content(Some(&vbox));
-        // toolbar.set_top_bar(Some(&header_bar));
 
-        window.set_child(Some(&toolbar));
+        vbox.set_margin_top(12);
+        toolbar.set_content(Some(&vbox));
+
+        window.set_content(Some(&toolbar));
 
         window.present();
 
@@ -335,7 +377,7 @@ fn main() {
     app.run();
 }
 
-fn make_page(ac: bool, device: lib::SupportedDevice) -> SettingsPage {
+fn make_page(ac: bool, device: lib::SupportedDevice) -> PreferencesPage {
     let fan_speed = get_fan_speed(ac).or_crash("Error reading fan speed");
     let brightness = get_brightness(ac).or_crash("Error reading brightness");
     let power = get_power(ac);
@@ -343,142 +385,145 @@ fn make_page(ac: bool, device: lib::SupportedDevice) -> SettingsPage {
     let min_fan_speed = *device.fan.get(0).or_crash("Invalid fan values") as f64;
     let max_fan_speed = *device.fan.get(1).or_crash("Invalid fan values") as f64;
 
-    let settings_page = SettingsPage::new();
+    let settings_page = PreferencesPage::new();
 
     // Logo section
     if device.has_logo() {
         let logo = get_logo(ac).or_crash("Error reading logo");
-        let settings_section = settings_page.add_section(Some("Logo"));
-        let label = Label::new(Some("Turn on logo"));
+
+        let settings_section = PreferencesGroup::new();
+        settings_section.set_title("Logo");
+        settings_page.add(&settings_section);
+
         let logo_options = StringList::new(&["Off", "On", "Breathing"]);
         let logo_options_dropdown = ComboRow::new();
         logo_options_dropdown.set_model(Some(&logo_options));
-
-        //logo_options.set_active(Some(logo as u32));
+        logo_options_dropdown.set_title("Turn on logo");
         logo_options_dropdown.set_selected(logo as u32);
-        logo_options_dropdown.connect_activated(move |options| {
+        logo_options_dropdown.connect_selected_notify(move |options| {
             let logo = options.selected() as u8;
             set_logo(ac, logo);
             let logo = get_logo(ac).or_crash("Error reading logo").clamp(0, 2);
             options.set_selected(logo as u32);
         });
-        let row = SettingsRow::new(&label, &logo_options_dropdown);
-        settings_section.add_row(&row.master_container);
+        settings_section.add(&logo_options_dropdown);
     }
 
     // Power section
     if let Some(power) = power {
-        let settings_section = settings_page.add_section(Some("Power"));
-        let label = Label::new(Some("Power Profile"));
+        let settings_section = PreferencesGroup::new();
+        settings_section.set_title("Power");
+        settings_page.add(&settings_section);
+
         let power_profile = StringList::new(&["Balanced", "Gaming", "Creator", "Silent", "Custom"]);
         let power_profile_dropdown = ComboRow::new();
         power_profile_dropdown.set_model(Some(&power_profile));
         power_profile_dropdown.set_selected(power.0 as u32);
+        power_profile_dropdown.set_title("Power Profile");
 
-        let row = SettingsRow::new(&label, &power_profile_dropdown);
-        settings_section.add_row(&row.master_container);
+        settings_section.add(&power_profile_dropdown);
 
-        let label = Label::new(Some("CPU Boost"));
-        let cpu_boost = ComboBoxText::new();
-        cpu_boost.append_text("Low");
-        cpu_boost.append_text("Medium");
-        cpu_boost.append_text("High");
+        let cpu_boost = StringList::new(&["Low", "Medium", "High"]);
+
         if device.can_boost() {
-            cpu_boost.append_text("Boost")
+            cpu_boost.append("Boost")
         };
-        cpu_boost.set_active(Some(power.1 as u32));
-        cpu_boost.set_width_request(100);
-        let row = SettingsRow::new(&label, &cpu_boost);
-        let cpu_boost_row = &row.master_container;
-        settings_section.add_row(cpu_boost_row);
-        let label = Label::new(Some("GPU Boost"));
-        let gpu_boost = ComboBoxText::new();
-        gpu_boost.append_text("Low");
-        gpu_boost.append_text("Medium");
-        gpu_boost.append_text("High");
-        gpu_boost.set_active(Some(power.2 as u32));
-        gpu_boost.set_width_request(100);
-        let row = SettingsRow::new(&label, &gpu_boost);
-        let gpu_boost_row = &row.master_container;
-        settings_section.add_row(gpu_boost_row);
 
-        cpu_boost_row.show_all();
-        cpu_boost_row.set_no_show_all(true);
-        gpu_boost_row.show_all();
-        gpu_boost_row.set_no_show_all(true);
+        let cpu_boost_dropdown = ComboRow::new();
+        cpu_boost_dropdown.set_model(Some(&cpu_boost));
+        cpu_boost_dropdown.set_selected(power.1 as u32);
+        cpu_boost_dropdown.set_title("CPU Boost");
+        settings_section.add(&cpu_boost_dropdown);
+
+        let gpu_boost = StringList::new(&["Low", "Medium", "High"]);
+        let gpu_boost_dropdown = ComboRow::new();
+        gpu_boost_dropdown.set_model(Some(&gpu_boost));
+        gpu_boost_dropdown.set_selected(power.2 as u32);
+        gpu_boost_dropdown.set_title("GPU Boost");
+        settings_section.add(&gpu_boost_dropdown);
+
         if power.0 == 4 {
-            cpu_boost_row.set_visible(true);
-            gpu_boost_row.set_visible(true);
+            gpu_boost_dropdown.set_visible(true);
+            gpu_boost_dropdown.set_visible(true);
         } else {
-            cpu_boost_row.set_visible(false);
-            gpu_boost_row.set_visible(false);
+            gpu_boost_dropdown.set_visible(false);
+            gpu_boost_dropdown.set_visible(false);
         }
 
-        power_profile.connect_changed(clone!(
-            @weak cpu_boost, @weak gpu_boost,
-            @weak cpu_boost_row, @weak gpu_boost_row
-            =>
-            move |power_profile| {
-                let profile = power_profile.active().or_crash("Illegal state") as u8;
-                let cpu     = cpu_boost.active().or_crash("Illegal state") as u8;
-                let gpu     = gpu_boost.active().or_crash("Illegal state") as u8;
+        power_profile_dropdown.connect_selectable_notify(clone!(
+            #[weak]
+            gpu_boost_dropdown,
+            #[weak]
+            cpu_boost_dropdown,
+            move |power_profile_dropdown| {
+                let profile = power_profile_dropdown.selected() as u8;
+                let cpu = cpu_boost_dropdown.selected() as u8;
+                let gpu = gpu_boost_dropdown.selected() as u8;
                 set_power(ac, (profile, cpu, gpu)).or_crash("Error setting power");
 
                 let power = get_power(ac).or_crash("Error reading power");
-                power_profile.set_active(Some(power.0 as u32));
-                cpu_boost.set_active(Some(power.1 as u32));
-                gpu_boost.set_active(Some(power.2 as u32));
+                power_profile_dropdown.set_selected(power.0 as u32);
+                cpu_boost_dropdown.set_selected(power.1 as u32);
+                gpu_boost_dropdown.set_selected(power.2 as u32);
 
                 if power.0 == 4 {
-                    cpu_boost_row.set_visible(true);
-                    gpu_boost_row.set_visible(true);
+                    gpu_boost_dropdown.set_visible(true);
+                    gpu_boost_dropdown.set_visible(true);
                 } else {
-                    cpu_boost_row.set_visible(false);
-                    gpu_boost_row.set_visible(false);
+                    gpu_boost_dropdown.set_visible(false);
+                    gpu_boost_dropdown.set_visible(false);
                 }
             }
         ));
-        cpu_boost.connect_changed(clone!(
-            @weak power_profile, @weak gpu_boost
-            =>
-            move |cpu_boost| {
-                let profile = power_profile.active().or_crash("Illegal state") as u8;
-                let cpu     = cpu_boost.active().or_crash("Illegal state") as u8;
-                let gpu     = gpu_boost.active().or_crash("Illegal state") as u8;
+
+        cpu_boost_dropdown.connect_activated(clone!(
+            #[weak]
+            power_profile_dropdown,
+            #[weak]
+            gpu_boost_dropdown,
+            move |cpu_boost_dropdown| {
+                let profile = power_profile_dropdown.selected() as u8;
+                let cpu = cpu_boost_dropdown.selected() as u8;
+                let gpu = gpu_boost_dropdown.selected() as u8;
                 set_power(ac, (profile, cpu, gpu)).or_crash("Error setting power");
 
                 let power = get_power(ac).or_crash("Error reading power");
-                power_profile.set_active(Some(power.0 as u32));
-                cpu_boost.set_active(Some(power.1 as u32));
-                gpu_boost.set_active(Some(power.2 as u32));
+                power_profile_dropdown.set_selected(power.0 as u32);
+                cpu_boost_dropdown.set_selected(power.1 as u32);
+                gpu_boost_dropdown.set_selected(power.2 as u32);
             }
         ));
-        gpu_boost.connect_changed(clone!(
-            @weak power_profile, @weak cpu_boost
-            =>
-            move |gpu_boost| {
-                let profile = power_profile.active().or_crash("Illegal state") as u8;
-                let cpu     = cpu_boost.active().or_crash("Illegal state") as u8;
-                let gpu     = gpu_boost.active().or_crash("Illegal state") as u8;
+
+        gpu_boost_dropdown.connect_activated(clone!(
+            #[weak]
+            power_profile_dropdown,
+            #[weak]
+            cpu_boost_dropdown,
+            move |gpu_boost_dropdown| {
+                let profile = power_profile_dropdown.selected() as u8;
+                let cpu = cpu_boost_dropdown.selected() as u8;
+                let gpu = gpu_boost_dropdown.selected() as u8;
                 set_power(ac, (profile, cpu, gpu)).or_crash("Error setting power");
 
                 let power = get_power(ac).or_crash("Error reading power");
-                power_profile.set_active(Some(power.0 as u32));
-                cpu_boost.set_active(Some(power.1 as u32));
-                gpu_boost.set_active(Some(power.2 as u32));
+                power_profile_dropdown.set_selected(power.0 as u32);
+                cpu_boost_dropdown.set_selected(power.1 as u32);
+                gpu_boost_dropdown.set_selected(power.2 as u32);
             }
         ));
     }
 
     // Fan Speed Section
-    let settings_section = settings_page.add_section(Some("Fan Speed"));
-    let label = Label::new(Some("Auto"));
-    let switch = Switch::new();
+    let settings_section = PreferencesGroup::new(); //settings_page.add_section(Some("Fan Speed"));
+    settings_section.set_title("Fan Control");
+    settings_page.add(&settings_section);
+
+    let switch = SwitchRow::new();
     let auto = fan_speed == 0;
-    switch.set_state(auto);
-    let row = SettingsRow::new(&label, &switch);
-    settings_section.add_row(&row.master_container);
-    let label = Label::new(Some("Fan Speed"));
+    switch.set_active(auto);
+    switch.set_title("Auto");
+
+    settings_section.add(&switch);
     let scale = Scale::with_range(
         gtk::Orientation::Horizontal,
         min_fan_speed,
@@ -487,51 +532,65 @@ fn make_page(ac: bool, device: lib::SupportedDevice) -> SettingsPage {
     );
     scale.set_value(fan_speed as f64);
     scale.set_sensitive(fan_speed != 0);
-    scale.set_width_request(100);
+    scale.set_width_request(150);
+    scale.set_draw_value(true);
 
     let update_label = gtk::Label::default();
     scale.connect_change_value(clone!(
         #[weak]
-        update_label,
+        switch,
+        #[upgrade_or_panic]
         move |scale, stype, value| {
-            // let value = value.clamp(min_fan_speed, max_fan_speed);
-            // set_fan_speed(ac, value as i32).or_crash("Error setting fan speed");
-            // let fan_speed = get_fan_speed(ac).or_crash("Error reading fan speed");
-            // let auto = fan_speed == 0;
-            // scale.set_value(fan_speed as f64);
-            // scale.set_sensitive(!auto);
-            // switch.set_state(auto);
-            //update_label.set_text(&format!("Horizontal scale value: {:.2}", value));
+            let value = value.clamp(min_fan_speed, max_fan_speed);
+            set_fan_speed(ac, value as i32).or_crash("Error setting fan speed");
+            let fan_speed = get_fan_speed(ac).or_crash("Error reading fan speed");
+            let auto = fan_speed == 0;
+            scale.set_value(fan_speed as f64);
+            scale.set_sensitive(!auto);
+            switch.set_active(auto);
+            update_label.set_text(&format!("Horizontal scale value: {:.2}", value));
             return glib::Propagation::Stop;
-        }
+        },
     ));
 
-    switch.connect_state_set(clone!(
+    switch.connect_active_notify(clone!(
         #[weak]
         scale,
-        move |switch: &gtk::Switch, state: bool| {
-            // set_fan_speed(ac, if state { 0 } else { min_fan_speed as i32 })
-            //     .or_crash("Error setting fan speed");
+        #[upgrade_or_panic]
+        move |switch| {
+            set_fan_speed(
+                ac,
+                if switch.is_active() {
+                    0
+                } else {
+                    min_fan_speed as i32
+                },
+            )
+            .or_crash("Error setting fan speed");
 
-            // let fan_speed = get_fan_speed(ac).or_crash("Error reading fan speed");
-            // let auto = fan_speed == 0;
+            let fan_speed = get_fan_speed(ac).or_crash("Error reading fan speed");
+            let auto = fan_speed == 0;
 
-            // scale.set_value(fan_speed as f64);
-            // scale.set_sensitive(!auto);
-            // switch.set_state(auto);
-
-            return glib::Propagation::Stop;
+            scale.set_value(fan_speed as f64);
+            scale.set_sensitive(!auto);
+            switch.set_active(auto);
         }
     ));
-    let row = SettingsRow::new(&label, &scale);
-    settings_section.add_row(&row.master_container);
+
+    let row = ActionRow::new();
+    row.set_title("Fan Speed");
+    row.add_suffix(&scale);
+    settings_section.add(&row);
 
     // Keyboard Section
-    let settings_section = settings_page.add_section(Some("Keyboard"));
-    let label = Label::new(Some("Brightness"));
+    let settings_section = PreferencesGroup::new(); //settings_page.add_section(Some("Keyboard"));
+    settings_section.set_title("Keyboard");
+    settings_page.add(&settings_section);
+
     let scale = Scale::with_range(gtk::Orientation::Horizontal, 0f64, 100f64, 1f64);
     scale.set_value(brightness as f64);
-    scale.set_width_request(100);
+    scale.set_width_request(150);
+    scale.set_draw_value(true);
     scale.connect_change_value(move |scale, stype, value| {
         let value = value.clamp(0f64, 100f64);
         set_brightness(ac, value as u8).or_crash("Error setting brigthness");
@@ -539,93 +598,111 @@ fn make_page(ac: bool, device: lib::SupportedDevice) -> SettingsPage {
         scale.set_value(brightness as f64);
         return gtk::glib::Propagation::Stop;
     });
-    let row = SettingsRow::new(&label, &scale);
-    settings_section.add_row(&row.master_container);
+    let row = ActionRow::new();
+    row.set_title("Brightness");
+    row.add_suffix(&scale);
+    settings_section.add(&row);
 
     settings_page
 }
 
-fn make_general_page() -> SettingsPage {
+fn make_general_page() -> PreferencesPage {
     let bho = get_bho();
 
-    let page = SettingsPage::new();
+    let page = PreferencesPage::new();
 
     // Keyboard Section
-    let settings_section = page.add_section(Some("Keyboard"));
-    let label = Label::new(Some("Effect"));
-    let effect_options = ComboBoxText::new();
-    effect_options.append_text("Static");
-    effect_options.append_text("Static Gradient");
-    effect_options.append_text("Wave Gradient");
-    effect_options.append_text("Breathing");
-    effect_options.set_active(Some(0));
-    let row = SettingsRow::new(&label, &effect_options);
-    settings_section.add_row(&row.master_container);
-    let label = Label::new(Some("Color 1"));
-    let color_picker = ColorButton::new();
-    let row = SettingsRow::new(&label, &color_picker);
-    settings_section.add_row(&row.master_container);
-    let label = Label::new(Some("Color 2"));
-    let color_picker_2 = ColorButton::new();
-    let row = SettingsRow::new(&label, &color_picker_2);
-    settings_section.add_row(&row.master_container);
-    let label = Label::new(Some("Write effect"));
-    let button = Button::with_label("Write");
-    button.connect_clicked(
-        clone!(@weak effect_options, @weak color_picker, @weak color_picker_2 =>
-            move |_| {
-                let color = color_picker.color();
-                let red   = (color.red   / 256) as u8;
-                let green = (color.green / 256) as u8;
-                let blue  = (color.blue  / 256) as u8;
+    let settings_section = PreferencesGroup::new(); //page.add_section(Some("Keyboard"));
+    settings_section.set_title("Keyboard");
+    page.add(&settings_section);
 
-                let color = color_picker_2.color();
-                let red2   = (color.red   / 256) as u8;
-                let green2 = (color.green / 256) as u8;
-                let blue2  = (color.blue  / 256) as u8;
+    let effect_options =
+        StringList::new(&["Static", "Static Gradient", "Wave Gradient", "Breathing"]);
+    let effect_options_dropdown = ComboRow::new();
+    effect_options_dropdown.set_model(Some(&effect_options));
+    effect_options_dropdown.set_selected(0);
+    effect_options_dropdown.set_title("Effect");
 
-                let effect = effect_options.active().or_crash("Illegal state");
-                match effect {
-                    0 => {
-                        set_effect("static", vec![red, green, blue])
-                            .or_crash("Failed to set effect");
-                    },
-                    1 => {
-                        set_effect(
-                            "static_gradient",
-                            vec![red, green, blue, red2, green2, blue2]
-                        ).or_crash("Failed to set effect");
-                    },
-                    2 => {
-                        set_effect("wave_gradient",
-                            vec![red, green, blue, red2, green2, blue2]
-                        ).or_crash("Failed to set effect");
-                    }
-                    3 => {
-                        set_effect(
-                            "breathing_single",
-                            vec![red, green, blue, 10]
-                        ).or_crash("Failed to set effect");
-                    }
-                    _ => {}
+    settings_section.add(&effect_options_dropdown);
+
+    let color_picker = ColorDialogButton::new(Some(ColorDialog::new()));
+    let row = ActionRow::new();
+    row.set_title("Color 1");
+    row.add_suffix(&color_picker);
+    settings_section.add(&row);
+
+    let color_picker_2 = ColorDialogButton::new(Some(ColorDialog::new()));
+    let row = ActionRow::new();
+    row.set_title("Color 2");
+    row.add_suffix(&color_picker_2);
+    settings_section.add(&row);
+
+    let button = ButtonRow::new();
+    button.set_title("Write effect");
+    button.set_action_name(Some("Write"));
+
+    settings_section.add(&button);
+
+    button.connect_activated(clone!(
+        #[weak]
+        effect_options_dropdown,
+        #[weak]
+        color_picker,
+        #[weak]
+        color_picker_2,
+        #[upgrade_or_panic]
+        move |_| {
+            let color = color_picker.rgba();
+            let red = (color.red() * 255.0).round() as u8;
+            let green = (color.green() * 255.0).round() as u8;
+            let blue = (color.blue() * 255.0).round() as u8;
+
+            let color = color_picker_2.rgba();
+            let red2 = (color.red() * 255.0).round() as u8;
+            let green2 = (color.green() * 255.0).round() as u8;
+            let blue2 = (color.blue() * 255.0).round() as u8;
+
+            let effect = effect_options_dropdown.selected();
+            match effect {
+                0 => {
+                    set_effect("static", vec![red, green, blue]).or_crash("Failed to set effect");
                 }
+                1 => {
+                    set_effect(
+                        "static_gradient",
+                        vec![red, green, blue, red2, green2, blue2],
+                    )
+                    .or_crash("Failed to set effect");
+                }
+                2 => {
+                    set_effect("wave_gradient", vec![red, green, blue, red2, green2, blue2])
+                        .or_crash("Failed to set effect");
+                }
+                3 => {
+                    set_effect("breathing_single", vec![red, green, blue, 10])
+                        .or_crash("Failed to set effect");
+                }
+                _ => {}
             }
-        ),
-    );
-    let row = SettingsRow::new(&label, &button);
-    settings_section.add_row(&row.master_container);
+        }
+    ));
 
-    effect_options.connect_changed(clone!(@weak color_picker, @weak color_picker_2 =>
+    effect_options_dropdown.connect_activated(clone!(
+        #[weak]
+        color_picker,
+        #[weak]
+        color_picker_2,
+        #[upgrade_or_panic]
         move |options| {
-            let logo = options.active().or_crash("Illegal state"); // Unwrap: There is always one active
+            let logo = options.selected(); // Unwrap: There is always one active
 
             match logo {
                 0 => {
                     // TODO: Color 1 visible
-                },
+                }
                 1 => {
                     // TODO: Color 1 and 2 visible
-                },
+                }
                 2 => {
                     // TODO: Color 1 and 2 visible
                 }
@@ -639,17 +716,23 @@ fn make_general_page() -> SettingsPage {
 
     // Battery Health Optimizer section
     if let Some(bho) = bho {
-        let settings_section = page.add_section(Some("Battery Health Optimizer"));
-        let label = Label::new(Some("Enable Battery Health Optimizer"));
-        let switch = Switch::new();
-        switch.set_state(bho.0);
-        let row = SettingsRow::new(&label, &switch);
-        settings_section.add_row(&row.master_container);
-        let label = Label::new(Some("Theshold"));
+        let settings_section = PreferencesGroup::new(); //page.add_section(Some("Battery Health Optimizer"));
+        settings_section.set_title("Battery Health Optimizer");
+        page.add(&settings_section);
+
+        let switch = SwitchRow::new();
+        switch.set_active(bho.0);
+        switch.set_title("Enable Battery Health Optimizer");
+        settings_section.add(&switch);
         let scale = Scale::with_range(gtk::Orientation::Horizontal, 65f64, 80f64, 1f64);
         scale.set_value(bho.1 as f64);
-        scale.set_width_request(100);
-        scale.connect_change_value(clone!(@weak switch => @default-return gtk::glib::Propagation::Stop, move |scale, stype, value| {
+        scale.set_width_request(150);
+        scale.set_draw_value(true);
+        scale.connect_change_value(clone!(
+            #[weak]
+            switch,
+            #[upgrade_or_panic]
+            move |scale, stype, value| {
                 let is_on = switch.is_active();
                 let threshold = value.clamp(50f64, 80f64) as u8;
 
@@ -662,61 +745,31 @@ fn make_general_page() -> SettingsPage {
                 scale.set_sensitive(is_on);
 
                 return gtk::glib::Propagation::Stop;
-            }));
+            }
+        ));
         scale.set_sensitive(bho.0);
-        switch.connect_changed_active(clone!(@weak scale => move |switch| {
-            let is_on = switch.is_active();
-            let threshold = scale.value().clamp(50f64, 80f64) as u8;
+        switch.connect_active_notify(clone!(
+            #[weak]
+            scale,
+            #[upgrade_or_panic]
+            move |switch| {
+                let threshold = scale.value().clamp(50f64, 80f64) as u8;
 
-            set_bho(is_on, threshold); // Ignoramos errores ya que leemos
-                                       // el resultado de vuelta
+                set_bho(switch.is_active(), threshold);
 
-            let (is_on, threshold) = get_bho().or_crash("Error reading bho");
+                let (is_on, threshold) = get_bho().or_crash("Error reading bho");
 
-            scale.set_value(threshold as f64);
-            scale.set_visible(is_on);
-            scale.set_sensitive(is_on);
-        }));
-        let row = SettingsRow::new(&label, &scale);
-        settings_section.add_row(&row.master_container);
+                scale.set_value(threshold as f64);
+                scale.set_visible(is_on);
+                scale.set_sensitive(is_on);
+            }
+        ));
+        let row = ActionRow::new();
+        row.set_title("Theshold");
+        row.add_suffix(&scale);
+
+        settings_section.add(&row);
     }
-
-    page
-}
-
-fn make_about_page(device: lib::SupportedDevice) -> SettingsPage {
-    let page = SettingsPage::new();
-
-    // About page
-    let settings_section = page.add_section(Some("Razer Laptop Control"));
-    let label = Label::new(Some("Project"));
-    let url = LinkButton::with_label(
-        "https://github.com/JosuGZ/razer-laptop-control",
-        "Project repository",
-    );
-    let row = SettingsRow::new(&label, &url);
-    settings_section.add_row(&row.master_container);
-    let report_bug_url = "https://github.com/JosuGZ/razer-laptop-control/issues/new?labels=bug&template=bug_report.md&title=%5BBUG%5D";
-    let label = Label::new(Some("Bug reports"));
-    let url = LinkButton::with_label(report_bug_url, "Report bug");
-    let row = SettingsRow::new(&label, &url);
-    settings_section.add_row(&row.master_container);
-    let label = Label::new(Some("Discord"));
-    let url = LinkButton::with_label("https://discord.gg/GdHKf45", "Razer Linux");
-    let row = SettingsRow::new(&label, &url);
-    settings_section.add_row(&row.master_container);
-
-    // Model section
-    let settings_section = page.add_section(Some("Laptop Information"));
-    let label = Label::new(Some("Model"));
-    let model_label = Label::new(Some(&device.name));
-    let row = SettingsRow::new(&label, &model_label);
-    settings_section.add_row(&row.master_container);
-    let label = Label::new(Some("Features"));
-    let features = device.features.join(", ");
-    let features_label = Label::new(Some(&features));
-    let row = SettingsRow::new(&label, &features_label);
-    settings_section.add_row(&row.master_container);
 
     page
 }
