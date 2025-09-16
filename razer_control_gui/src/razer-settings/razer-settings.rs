@@ -1,13 +1,14 @@
 use std::io::ErrorKind;
 
+use adw::prelude::{self, *};
 use adw::{
-    ActionRow, Application, ApplicationWindow, ButtonRow, ComboRow, HeaderBar,
-    PreferencesGroup, PreferencesPage, SwitchRow, ToolbarView, ViewStack, ViewSwitcher,
-    WindowTitle,
+    ActionRow, Application, ApplicationWindow, ButtonRow, ComboRow, HeaderBar, PreferencesGroup,
+    PreferencesPage, SpinRow, SwitchRow, ToolbarView, ViewStack, ViewSwitcher, WindowTitle,
 };
-use adw::prelude::*;
+use dbus::arg::Append;
+use gtk::gdk::Display;
 use gtk::{
-    Button, ColorDialog, ColorDialogButton, License, Scale, StringList,
+    Adjustment, Button, ColorDialog, ColorDialogButton, IconTheme, License, Scale, StringList,
 };
 use gtk::{glib, glib::clone};
 
@@ -25,6 +26,11 @@ use util::*;
 
 #[path = "../lib.rs"]
 mod lib;
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const NAME: &str = env!("CARGO_PKG_NAME");
+const AUTHORS: &str = env!("CARGO_PKG_AUTHORS");
+const PARENT_PATH: &str = env!("CARGO_MANIFEST_DIR");
 
 fn send_data(opt: comms::DaemonCommand) -> Option<comms::DaemonResponse> {
     match comms::try_bind() {
@@ -176,7 +182,7 @@ fn get_power(ac: bool) -> Option<(u8, u8, u8)> {
     }
 
     let response = send_data(comms::DaemonCommand::GetCPUBoost { ac })?;
-    
+
     match response {
         GetCPUBoost { cpu } => {
             result.1 = cpu;
@@ -189,7 +195,7 @@ fn get_power(ac: bool) -> Option<(u8, u8, u8)> {
     }
 
     let response = send_data(comms::DaemonCommand::GetGPUBoost { ac })?;
-    
+
     match response {
         GetGPUBoost { gpu } => {
             result.2 = gpu;
@@ -262,12 +268,12 @@ fn show_about(window: &ApplicationWindow, device: &lib::SupportedDevice) {
         .application_name("Razer Laptop Control")
         .application_icon("com.no8f.razerLaptopControl")
         .developer_name("Noah Felber")
-        .issue_url("https://github.com/no8f/razer-laptop-control/issues")
+        .issue_url("https://github.com/no8f/razer-laptop-control/issues/new/choose")
         .website("https://github.com/no8f/razer-laptop-control")
         .comments(format!("<span size='large' weight='bold' >Laptop Information</span>\n\n - Model: {name} \n - Features: {features}"))
-        .version("0.2.0")
-        .developers(vec!["Noah Felber", "Josu Goñi"])
-        .copyright("© 2025 Noah Felber, © 2024 Josu Goñi")
+        .version(VERSION)
+        .developers(AUTHORS.split(":").collect::<Vec<&str>>())
+        .copyright("© 2025 Noah Felber")
         .license_type(License::Gpl30)
         .build();
 
@@ -286,8 +292,21 @@ fn main() {
     let device_name = get_device_name().or_crash("Failed to get device name");
 
     let app = Application::builder()
-        .application_id("com.no8f.razerLaptopControl") // TODO: Change this name
+        .application_id("com.no8f.razerLaptopControl")
         .build();
+
+    app.set_version(VERSION);
+
+    #[cfg(debug_assertions)]
+    {
+        let data_path = PARENT_PATH.to_owned() + "/razer_control_gui/ressources";
+        let theme = IconTheme::for_display(&Display::default().unwrap());
+        theme.add_search_path(&(data_path.to_owned() + "/icons/hicolor/scalable"));
+        println!(
+            "has icon: {}",
+            theme.has_icon(&app.application_id().unwrap())
+        );
+    }
 
     app.connect_activate(move |app| {
         // For now we get the device from the device name. One is duplicated but
@@ -303,6 +322,7 @@ fn main() {
             .default_width(640)
             .default_height(740)
             .title("Razer Settings")
+            .icon_name(app.application_id().unwrap())
             .build();
 
         let ac_settings_page = make_page(true, device.clone());
@@ -441,14 +461,14 @@ fn make_page(ac: bool, device: lib::SupportedDevice) -> PreferencesPage {
         settings_section.add(&gpu_boost_dropdown);
 
         if power.0 == 4 {
-            gpu_boost_dropdown.set_visible(true);
+            cpu_boost_dropdown.set_visible(true);
             gpu_boost_dropdown.set_visible(true);
         } else {
-            gpu_boost_dropdown.set_visible(false);
+            cpu_boost_dropdown.set_visible(false);
             gpu_boost_dropdown.set_visible(false);
         }
 
-        power_profile_dropdown.connect_selectable_notify(clone!(
+        power_profile_dropdown.connect_selected_notify(clone!(
             #[weak]
             gpu_boost_dropdown,
             #[weak]
@@ -465,16 +485,16 @@ fn make_page(ac: bool, device: lib::SupportedDevice) -> PreferencesPage {
                 gpu_boost_dropdown.set_selected(power.2 as u32);
 
                 if power.0 == 4 {
-                    gpu_boost_dropdown.set_visible(true);
+                    cpu_boost_dropdown.set_visible(true);
                     gpu_boost_dropdown.set_visible(true);
                 } else {
-                    gpu_boost_dropdown.set_visible(false);
+                    cpu_boost_dropdown.set_visible(false);
                     gpu_boost_dropdown.set_visible(false);
                 }
             }
         ));
 
-        cpu_boost_dropdown.connect_activated(clone!(
+        cpu_boost_dropdown.connect_selected_notify(clone!(
             #[weak]
             power_profile_dropdown,
             #[weak]
@@ -492,7 +512,7 @@ fn make_page(ac: bool, device: lib::SupportedDevice) -> PreferencesPage {
             }
         ));
 
-        gpu_boost_dropdown.connect_activated(clone!(
+        gpu_boost_dropdown.connect_selected_notify(clone!(
             #[weak]
             power_profile_dropdown,
             #[weak]
@@ -610,7 +630,7 @@ fn make_general_page() -> PreferencesPage {
     let page = PreferencesPage::new();
 
     // Keyboard Section
-    let settings_section = PreferencesGroup::new(); //page.add_section(Some("Keyboard"));
+    let settings_section = PreferencesGroup::new();
     settings_section.set_title("Keyboard");
     page.add(&settings_section);
 
@@ -618,26 +638,30 @@ fn make_general_page() -> PreferencesPage {
         StringList::new(&["Static", "Static Gradient", "Wave Gradient", "Breathing"]);
     let effect_options_dropdown = ComboRow::new();
     effect_options_dropdown.set_model(Some(&effect_options));
-    effect_options_dropdown.set_selected(0);
     effect_options_dropdown.set_title("Effect");
 
     settings_section.add(&effect_options_dropdown);
 
     let color_picker = ColorDialogButton::new(Some(ColorDialog::new()));
-    let row = ActionRow::new();
-    row.set_title("Color 1");
-    row.add_suffix(&color_picker);
-    settings_section.add(&row);
+    let color_picker_row = ActionRow::new();
+    color_picker_row.set_title("Color 1");
+    color_picker_row.add_suffix(&color_picker);
+    settings_section.add(&color_picker_row);
 
     let color_picker_2 = ColorDialogButton::new(Some(ColorDialog::new()));
-    let row = ActionRow::new();
-    row.set_title("Color 2");
-    row.add_suffix(&color_picker_2);
-    settings_section.add(&row);
+    let color_picker_row_2 = ActionRow::new();
+    color_picker_row_2.set_title("Color 2");
+    color_picker_row_2.add_suffix(&color_picker_2);
+    settings_section.add(&color_picker_row_2);
+
+    let duration_spinner = SpinRow::with_range(0.0, 1000.0, 1.0);
+    duration_spinner.set_title("Animation Duration");
+    settings_section.add(&duration_spinner);
 
     let button = ButtonRow::new();
     button.set_title("Write effect");
-    button.set_action_name(Some("Write"));
+    button.set_end_icon_name(Some("go-next-symbolic"));
+    button.set_activatable(true);
 
     settings_section.add(&button);
 
@@ -648,6 +672,8 @@ fn make_general_page() -> PreferencesPage {
         color_picker,
         #[weak]
         color_picker_2,
+        #[weak]
+        duration_spinner,
         #[upgrade_or_panic]
         move |_| {
             let color = color_picker.rgba();
@@ -677,40 +703,42 @@ fn make_general_page() -> PreferencesPage {
                         .or_crash("Failed to set effect");
                 }
                 3 => {
-                    set_effect("breathing_single", vec![red, green, blue, 10])
-                        .or_crash("Failed to set effect");
+                    set_effect(
+                        "breathing_single",
+                        vec![red, green, blue, duration_spinner.value() as u8],
+                    )
+                    .or_crash("Failed to set effect");
                 }
                 _ => {}
             }
         }
     ));
 
-    effect_options_dropdown.connect_activated(clone!(
+    effect_options_dropdown.connect_selected_notify(clone!(
         #[weak]
-        color_picker,
+        color_picker_row_2,
         #[weak]
-        color_picker_2,
+        duration_spinner,
         #[upgrade_or_panic]
         move |options| {
-            let logo = options.selected(); // Unwrap: There is always one active
+            let logo = options.selected();
+            color_picker_row_2.set_visible(false);
+            duration_spinner.set_visible(false);
 
             match logo {
-                0 => {
-                    // TODO: Color 1 visible
-                }
-                1 => {
-                    // TODO: Color 1 and 2 visible
-                }
-                2 => {
-                    // TODO: Color 1 and 2 visible
+                1 | 2 => {
+                    color_picker_row_2.set_visible(true);
                 }
                 3 => {
-                    // TODO: Color 1, 2, and duration visible
+                    color_picker_row_2.set_visible(true);
+                    duration_spinner.set_visible(true);
                 }
                 _ => {}
             }
         }
     ));
+    effect_options_dropdown.set_selected(0);
+    effect_options_dropdown.notify("selected");
 
     // Battery Health Optimizer section
     if let Some(bho) = bho {
