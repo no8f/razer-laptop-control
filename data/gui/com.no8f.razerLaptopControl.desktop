@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Razer Laptop Control
+Comment=Manage your Razer laptop
+Exec=/usr/bin/razer-settings
+Terminal=false
+Icon=com.no8f.razerLaptopControl
+Categories=Utility;

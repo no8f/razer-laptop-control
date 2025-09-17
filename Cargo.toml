@@ -6,15 +6,15 @@ edition = "2024"
 
 [[bin]]
 name = "razer-cli"
-path = "razer_control_gui/src/cli/cli.rs"
+path = "src/cli/cli.rs"
 
 [[bin]]
 name = "daemon"
-path = "razer_control_gui/src/daemon/daemon.rs"
+path = "src/daemon/daemon.rs"
 
 [[bin]]
 name = "razer-settings"
-path = "razer_control_gui/src/razer-settings/razer-settings.rs"
+path = "src/razer-settings/razer-settings.rs"
 
 [lints.rust]
 

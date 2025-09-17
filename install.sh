@@ -40,12 +40,15 @@ install() {
         if ls /usr/share/applications/*.desktop 1> /dev/null 2>&1; then
             # We only install the desktop file if there are already desktop
             # files on the system
-            cp data/gui/razer-settings.desktop /usr/share/applications/
+            cp data/gui/com.no8f.razerLaptopControl.desktop /usr/share/applications/
         fi
         cp target/release/daemon /usr/share/razercontrol/
         cp data/devices/laptops.json /usr/share/razercontrol/
         cp data/udev/99-hidraw-permissions.rules /etc/udev/rules.d/
+        cp data/gui/com.no8f.razerLaptopControl.svg /usr/share/icons/hicolor/scalable/apps/
+        gtk-update-icon-cache /usr/share/icons/hicolor/
         udevadm control --reload-rules
+        sudo udevadm trigger
 EOF
 
     if [ $? -ne 0 ]; then
@@ -82,7 +85,8 @@ uninstall() {
     sudo bash <<EOF
         rm -f /usr/bin/razer-cli
         rm -f /usr/bin/razer-settings
-        rm -f /usr/share/applications/razer-settings.desktop
+        rm -f /usr/share/applications/com.no8f.razerLaptopControl.desktop
+        rm -f /usr/share/icons/hicolor/scalable/apps/com.no8f.razerLaptopControl.svg
         rm -f /usr/share/razercontrol/daemon
         rm -f /usr/share/razercontrol/laptops.json
         rm -f /etc/udev/rules.d/99-hidraw-permissions.rules

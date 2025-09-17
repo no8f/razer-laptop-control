@@ -296,18 +296,6 @@ fn main() {
         .build();
 
     app.set_version(VERSION);
-
-    #[cfg(debug_assertions)]
-    {
-        let data_path = PARENT_PATH.to_owned() + "/razer_control_gui/ressources";
-        let theme = IconTheme::for_display(&Display::default().unwrap());
-        theme.add_search_path(&(data_path.to_owned() + "/icons/hicolor/scalable"));
-        println!(
-            "has icon: {}",
-            theme.has_icon(&app.application_id().unwrap())
-        );
-    }
-
     app.connect_activate(move |app| {
         // For now we get the device from the device name. One is duplicated but
         // its settings are the same.
@@ -321,7 +309,7 @@ fn main() {
             .application(app)
             .default_width(640)
             .default_height(740)
-            .title("Razer Settings")
+            .title("Razer Laptop Control")
             .icon_name(app.application_id().unwrap())
             .build();
 
